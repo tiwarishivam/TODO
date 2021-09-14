@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import TodoList
-from .serializers import TodoListSerializer
+from .serializers import TodoListSerializer, UpdateTodoListSerializer
 
 from .utils import set_redis, get_redis
 
@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 class GetTodotaskList(APIView):
+    ''' For fetching all todo tasks for a user '''
+
     permissions = (IsAuthenticated,)
 
     def get(self, request):
@@ -30,10 +32,12 @@ class GetTodotaskList(APIView):
 
 
 class GetTodotask(APIView):
+    ''' For Fetching a single todo task for the user '''
+
     permissions = (IsAuthenticated,)
 
     def authorised(self, user_id, user):
-        if user_id != user.id:
+        if user_id != user.id:  # validating that user can only fetch thier todo task
             return False
         return True
 
@@ -75,12 +79,22 @@ class GetTodotask(APIView):
 
 
 class UpdateTodotask(APIView):
+    ''' Update an existing todo task '''
+
     permissions = (IsAuthenticated,)
 
     def post(self, request, task_id):
         try:
+            user = request.user
+
             task = TodoList.objects.get(id=task_id)
-            serializer = TodoListSerializer(instance=task, data=request.data)
+
+            if task and user.id != task.user_id:  # user not allowed to update someone elses todo task
+                return Response({
+                    'message': 'Not allowed to update this task'
+                }, status=403)
+
+            serializer = UpdateTodoListSerializer(instance=task, data=request.data)
             if serializer.is_valid():
                 serializer.save()
 
@@ -105,6 +119,8 @@ class UpdateTodotask(APIView):
 
 
 class CreateTodoTask(APIView):
+    ''' For creating new todo task '''
+
     permissions = (IsAuthenticated,)
 
     def post(self, request):
@@ -115,7 +131,7 @@ class CreateTodoTask(APIView):
         if user_id:
             user_id = int(user_id)
 
-        if user.id != user_id:
+        if user.id != user_id:  # validating if user is trying to create todo for themself only
             return Response({
                 "message": ['User not allowed to create this todo task']
             }, status=403)
@@ -138,6 +154,8 @@ class CreateTodoTask(APIView):
 
 
 class DeleteTodoTask(APIView):
+    ''' For deleting a todo task '''
+
     permissions = (IsAuthenticated, )
 
     def delete(self, request, task_id):
@@ -148,7 +166,7 @@ class DeleteTodoTask(APIView):
                 'message': 'No task found'
             }, status=404)
 
-        if task.user_id != request.user.id:
+        if task.user_id != request.user.id:  # validating if user is trying to delete thier own todo task
             logger.error('DeleteTodoTask: not allowed to delete this task')
             return Response({
                 'message': 'not allowed to delete this task'
